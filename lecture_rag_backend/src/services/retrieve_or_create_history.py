@@ -1,13 +1,10 @@
 import psycopg2
 import json
 
+from src.extensions import DB_CONN_STRING
+
 def retrieve_or_create_history(uuid, query):
-    conn = psycopg2.connect(
-        host='localhost',
-        port=5432,
-        user='cpickard',
-        database='lecture_rag'
-    )
+    conn = psycopg2.connect(DB_CONN_STRING)
 
     cursor = conn.cursor()
 

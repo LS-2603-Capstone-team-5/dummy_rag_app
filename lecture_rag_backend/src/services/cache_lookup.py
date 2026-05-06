@@ -1,14 +1,11 @@
 import psycopg2
 
+from src.extensions import DB_CONN_STRING
+
 CACHE_SIMILARITY_THRESHOLD = 0.7
 
 def cache_lookup(query_embedding, dialogue_mode):
-    conn = psycopg2.connect(
-        host="localhost",
-        port=5432,
-        user="cpickard",
-        database="lecture_rag"
-    )
+    conn = psycopg2.connect(DB_CONN_STRING)
     cursor = conn.cursor()
 
     result = None

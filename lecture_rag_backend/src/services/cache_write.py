@@ -1,13 +1,10 @@
 import psycopg2
 
+from src.extensions import DB_CONN_STRING
+
 
 def cache_write(query_embedding, query_text, response_text, dialogue_mode):
-    conn = psycopg2.connect(
-        host="localhost",
-        port=5432,
-        user="cpickard",
-        database="lecture_rag"
-    )
+    conn = psycopg2.connect(DB_CONN_STRING)
     cursor = conn.cursor()
 
     try:

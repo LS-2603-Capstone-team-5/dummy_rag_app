@@ -1,6 +1,6 @@
 import psycopg2
 
-from src.extensions import client
+from src.extensions import client, DB_CONN_STRING
 
 SIMILARITY_CUTOFF = .50
 
@@ -20,12 +20,7 @@ def extract_contents(results):
 
 
 def retrieve_most_similar(new_embedding):
-    conn = psycopg2.connect(
-        host="localhost",
-        port=5432,
-        user="cpickard",
-        database="lecture_rag"
-    )
+    conn = psycopg2.connect(DB_CONN_STRING)
     cursor = conn.cursor()
 
     result = None

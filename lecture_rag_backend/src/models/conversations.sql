@@ -2,7 +2,8 @@ CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     history JSONB NOT NULL DEFAULT '[]',
     summary text,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    llm_context JSONB NOT NULL DEFAULT '[]'
 );
 
 

@@ -1,12 +1,9 @@
 import psycopg2
 
+from src.extensions import DB_CONN_STRING
+
 def update_with_summary(summary, uuid):
-  conn = psycopg2.connect(
-      host='localhost',
-      port=5432,
-      user='cpickard',
-      database='lecture_rag'
-  )
+  conn = psycopg2.connect(DB_CONN_STRING)
 
   cursor = conn.cursor()
 
