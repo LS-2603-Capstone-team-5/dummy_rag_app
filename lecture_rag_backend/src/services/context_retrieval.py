@@ -28,7 +28,7 @@ def retrieve_most_similar(new_embedding):
     try:
         cursor.execute("""
             SELECT lecture_title, content, 1 - (embedding::vector <=> %s::vector) AS similarity
-            FROM coco_data_chunks
+            FROM data_chunks
             WHERE (1 - (embedding::vector <=> %s::vector)) > %s
             ORDER BY (1 - (embedding::vector <=> %s::vector)) DESC
         """, (new_embedding, new_embedding, SIMILARITY_CUTOFF, new_embedding))
