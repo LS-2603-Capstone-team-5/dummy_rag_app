@@ -17,6 +17,7 @@ from cocoindex.connectors import localfs, postgres
 from cocoindex.resources.file import FileLike, PatternFilePathMatcher
 from cocoindex.resources.id import IdGenerator
 from cocoindex.resources.schema import VectorSchema
+from cocoindex.connectors.google_drive import GoogleDriveSource
 
 load_dotenv()
 
@@ -116,6 +117,7 @@ async def process_txt_file(
             for p in paragraphs
         ]
 
+    print(f"[DEBUG txt] {filename}: {len(chunks)} chunks (slides={len(slides)})")
     for content, enriched in chunks:
         table.declare_row(
             row=DataChunk(
@@ -134,18 +136,17 @@ async def process_qa_md(
 ) -> None:
     # memo=True: unchanged Q&A files are skipped entirely
     text = await file.read_text()
+
+    fname = file.file_path.path.name
     id_gen = IdGenerator()
+    row_count = 0
 
-    # Each entry starts with a ## heading; split on those boundaries
+    # Try structured Q&A format first: ## heading blocks with **Lecture:** metadata
     blocks = re.split(r'\n(?=## )', text.strip())
+    qa_blocks = [b.strip() for b in blocks if b.strip().startswith("## ")]
 
-    for block in blocks:
-        block = block.strip()
-        if not block.startswith("## "):
-            continue
-
+    for block in qa_blocks:
         lines = block.splitlines()
-
         title = re.sub(r'^##\s*\*?\*?(.+?)\*?\*?\s*$', r'\1', lines[0]).strip()
 
         lecture_title = None
@@ -166,7 +167,7 @@ async def process_qa_md(
 
         content = f"Q: {title}\n\n{body}"
         enriched = f"Lecture: {lecture_title}\n{content}"
-
+        row_count += 1
         table.declare_row(
             row=DataChunk(
                 id=await id_gen.next_id(enriched),
@@ -176,6 +177,47 @@ async def process_qa_md(
             )
         )
 
+    # Fallback: reading/supplement docs with a # Title and plain paragraphs
+    if row_count == 0:
+        lines = text.strip().splitlines()
+        lecture_title = None
+        body_lines = []
+        for line in lines:
+            m = re.match(r'^#+\s+\*?\*?(.+?)\*?\*?\s*$', line)
+            if m and lecture_title is None:
+                lecture_title = m.group(1).strip()
+            else:
+                body_lines.append(line)
+
+        if lecture_title:
+            body_text = "\n".join(body_lines)
+            paragraphs = [p.strip() for p in body_text.split("\n\n") if p.strip()]
+            for para in paragraphs:
+                enriched = f"Lecture: {lecture_title}\n{para}"
+                row_count += 1
+                table.declare_row(
+                    row=DataChunk(
+                        id=await id_gen.next_id(enriched),
+                        lecture_title=lecture_title,
+                        content=para,
+                        embedding=await embed_content(enriched),
+                    )
+                )
+
+    print(f"[DEBUG qa] {fname}: {row_count} rows")
+
+
+# @coco.fn
+# async def app_main() -> None:
+#     table = await postgres.mount_table_target(...)
+
+#     drive = GoogleDriveSource(
+#         service_account_credential_path=os.getenv("GDRIVE_CREDENTIALS_PATH"),
+#         root_folder_ids=os.getenv("GDRIVE_ROOT_FOLDER_IDS").split(","),
+#         mime_types=None,  # or filter: ["text/plain", "application/vnd.google-apps.presentation"]
+#     )
+
+#     await coco.mount_each(process_txt_file, drive.items(), table)
 
 @coco.fn
 async def app_main(corpus_dir: pathlib.Path) -> None:
@@ -191,19 +233,41 @@ async def app_main(corpus_dir: pathlib.Path) -> None:
 
     txt_files = localfs.walk_dir(
         corpus_dir,
-        live=True,
+        live=False,
         recursive=True,
         path_matcher=PatternFilePathMatcher(included_patterns=["**/*.txt"]),
     )
     await coco.mount_each(process_txt_file, txt_files.items(), table)
 
+
     md_files = localfs.walk_dir(
         corpus_dir,
-        live=True,
+        live=False,
         recursive=True,
         path_matcher=PatternFilePathMatcher(included_patterns=["**/*.md"]),
     )
     await coco.mount_each(process_qa_md, md_files.items(), table)
+
+    gdrive_creds = os.getenv("GDRIVE_CREDENTIALS_PATH")
+    gdrive_folders = os.getenv("GDRIVE_ROOT_FOLDER_IDS")
+    if not gdrive_creds or not gdrive_folders:
+        raise RuntimeError("GDRIVE_CREDENTIALS_PATH and GDRIVE_ROOT_FOLDER_IDS must be set in .env")
+
+    folder_ids = gdrive_folders.split(",")
+
+    slides_drive = GoogleDriveSource(
+        service_account_credential_path=gdrive_creds,
+        root_folder_ids=folder_ids,
+        mime_types=["application/vnd.google-apps.presentation", "text/plain"],
+    )
+    await coco.mount_each(process_txt_file, slides_drive.items(), table)
+
+    docs_drive = GoogleDriveSource(
+        service_account_credential_path=gdrive_creds,
+        root_folder_ids=folder_ids,
+        mime_types=["application/vnd.google-apps.document"],
+    )
+    await coco.mount_each(process_qa_md, docs_drive.items(), table)
 
 
 app = coco.App(
